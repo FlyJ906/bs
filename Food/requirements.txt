@@ -1,0 +1,8 @@
+opencv-python
+pyzbar
+requests
+gradio
+paddleocr
+pymysql
+pillow
+numpy
