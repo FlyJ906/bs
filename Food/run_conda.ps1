@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $proj = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $proj
 
-$py = "D:\\Anaconda\\python.exe"
+$py = "D:\\python\\python.exe"
 if (-not (Test-Path $py)) {
   Write-Host "找不到 $py"
   Write-Host "请把 run_conda.ps1 里的 `$py 改成你实际的 conda python 路径。"

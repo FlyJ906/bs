@@ -1,8 +1,36 @@
+# Core dependencies
 opencv-python
 pyzbar
 requests
 gradio
-paddleocr
 pymysql
 pillow
 numpy
+
+# OCR dependencies
+# PaddleOCR (default, requires 2-4GB memory)
+# Note: paddleocr 2.7+ removed show_log parameter, use environment variables
+#
+# IMPORTANT: Version compatibility between PaddlePaddle and PaddleOCR
+# - PaddlePaddle 3.x has removed set_optimization_level method
+# - Older paddleocr versions (<2.8.0) may call this method and fail
+#
+# Recommended compatible versions:
+#   paddlepaddle==2.6.1 with paddleocr>=2.7.0
+#   OR paddlepaddle>=3.0.0 with paddleocr>=2.8.0
+#
+# If you encounter "set_optimization_level" error, run:
+#   pip install --upgrade paddleocr
+# OR downgrade paddlepaddle:
+#   pip install paddlepaddle==2.6.1
+paddlepaddle>=2.5.0
+paddleocr>=2.7.0
+
+# Alternative: Tesseract OCR (lightweight)
+# pip install pytesseract
+# Also need to install Tesseract software: https://github.com/UB-Mannheim/tesseract/wiki
+# pytesseract
+
+# Alternative: EasyOCR (medium memory usage)
+# pip install easyocr
+# easyocr

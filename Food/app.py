@@ -1,13 +1,14 @@
 import os
 
-# Paddle / oneDNN 在部分版本组合下可能触发未实现算子错误（onednn_instruction.cc）。
-# 必须在 OCR 相关库导入/初始化前设置环境变量，保证进程级别生效。
-os.environ.setdefault("FLAGS_use_mkldnn", "0")
-os.environ.setdefault("FLAGS_use_mkldnn_int8", "0")
-os.environ.setdefault("FLAGS_use_onednn", "0")
-os.environ.setdefault("FLAGS_enable_new_executor", "0")
-os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
-os.environ.setdefault("FLAGS_enable_pir_api", "0")
+os.environ["FLAGS_use_mkldnn"] = "0"
+os.environ["FLAGS_use_mkldnn_int8"] = "0"
+os.environ["FLAGS_use_onednn"] = "0"
+os.environ["FLAGS_enable_new_executor"] = "0"
+os.environ["FLAGS_enable_pir_in_executor"] = "0"
+os.environ["FLAGS_enable_pir_api"] = "0"
+os.environ["FLAGS_enable_new_ir"] = "0"
+os.environ["FLAGS_use_pir"] = "0"
+os.environ["FLAGS_check_nan_inf"] = "0"
 
 import gradio as gr
 import threading
@@ -17,6 +18,7 @@ from barcode_scanner import scan_barcode_from_image, scan_barcode
 from api_client import get_product_from_api
 from ocr_processor import ocr_ingredients
 from health_analyzer import analyze_ingredients
+from ai_health_advisor import generate_detailed_analysis
 
 # 处理扫码结果（从图片解码）
 def process_scan(barcode_image, health_identity):
@@ -132,10 +134,14 @@ def main():
                 
                 # 完整成分解读按钮
                 analyze_btn = gr.Button("完整成分解读")
+                # AI健康顾问按钮
+                ai_advice_btn = gr.Button("AI健康顾问")
                 ingredients_table = gr.Dataframe(
                     headers=["成分名称", "成分标签", "作用", "健康提示"],
                     datatype=["str", "str", "str", "str"]
                 )
+                # AI健康建议输出
+                ai_advice_output = gr.Markdown(label="AI健康建议")
         
         # 隐藏的条形码存储
         barcode_store = gr.State(value="")
@@ -154,26 +160,40 @@ def main():
                 health_alert_text = f"基于{identity}人群的健康分析"
                 return result["product_name"], health_alert_text, result["ingredients_raw"], result["ingredients_table"], gr.Row(visible=True), result["barcode"]
         
-        def analyze_handler(name, identity):
-            if not name:
-                return []
-            # 模拟成分解读结果
-            ingredients_list = ["水", "白砂糖", "柠檬酸", "山梨酸钾", "抗坏血酸"]
-            ingredients_table = analyze_ingredients(ingredients_list, identity, get_ingredient_info)
-            return ingredients_table
-        
         def upload_handler(image, identity, barcode):
             result = process_image(image, identity, barcode)
             health_alert_text = f"基于{identity}人群的健康分析"
             return result["product_name"], health_alert_text, result["ingredients_raw"], result["ingredients_table"], gr.Row(visible=True)
         
-        def analyze_handler(product_name, identity):
-            # 从本地数据库查询产品信息
-            # 注意：这里需要根据产品名称查询，实际实现可能需要调整
-            # 暂时返回空表，实际应该从数据库获取成分信息并分析
-            ingredients_list = ["水", "白砂糖", "柠檬酸", "山梨酸钾", "抗坏血酸"]
+        def analyze_handler(product_name, identity, raw_ingredients):
+            # 使用真实的成分数据进行解读
+            if not product_name or not raw_ingredients:
+                return []
+            # 将成分字符串分割成列表（支持顿号和逗号分隔）
+            raw_ingredients = raw_ingredients.replace('、', ',')
+            ingredients_list = [ing.strip() for ing in raw_ingredients.split(',') if ing.strip()]
+            if not ingredients_list:
+                return []
             ingredients_table = analyze_ingredients(ingredients_list, identity, get_ingredient_info)
             return ingredients_table
+        
+        def ai_advice_handler(product_name, identity, raw_ingredients, barcode):
+            # 获取商品信息
+            product = None
+            if barcode:
+                product = query_local_product(barcode)
+            
+            if not product:
+                # 构建临时商品信息
+                product = {
+                    "product_name": product_name,
+                    "ingredients_raw": raw_ingredients,
+                    "ingredients_parsed": raw_ingredients.replace('、', ',')
+                }
+            
+            # 生成AI健康建议
+            advice = generate_detailed_analysis(product, identity)
+            return advice
         
         def camera_scan_handler(identity):
             # 调用实时摄像头扫描函数
@@ -212,8 +232,14 @@ def main():
         
         analyze_btn.click(
             fn=analyze_handler,
-            inputs=[product_name, health_identity],
+            inputs=[product_name, health_identity, ingredients_raw],
             outputs=[ingredients_table]
+        )
+        
+        ai_advice_btn.click(
+            fn=ai_advice_handler,
+            inputs=[product_name, health_identity, ingredients_raw, barcode_store],
+            outputs=[ai_advice_output]
         )
         
         # 图片一变更就进行识别

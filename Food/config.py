@@ -8,4 +8,11 @@ PRODUCTS_CSV = "products.csv"
 INGREDIENTS_CSV = "ingredients.csv"
 
 # API配置
-OPEN_FOOD_FACTS_API_URL = "https://world.openfoodfacts.org/api/v0/product/{barcode}.json"
+API_BYTE_URL = "https://apione.apibyte.cn/api/barcode"
+API_BYTE_KEY = "Shanhai-ypf8yK8zsxIABafsVeboc8xqKDyqqLGgCJXfii1LJH7x1zcc"
+
+# API请求配置
+MAX_REQUESTS_PER_MINUTE = 100
+API_TIMEOUT = 10
+API_RETRY_COUNT = 3
+API_RETRY_DELAY = 2

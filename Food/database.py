@@ -58,14 +58,20 @@ def init_database():
         connection = pymysql.connect(**DB_CONFIG)
         cursor = connection.cursor()
         
-        # 创建products表
+        # 检查products表是否存在
+        cursor.execute("SHOW TABLES LIKE 'products'")
+        table_exists = cursor.fetchone()
+        
+        # 无论表是否存在，都重新创建表以符合新的字段要求
+        # 先删除旧表
+        cursor.execute("DROP TABLE IF EXISTS products")
+        
+        # 创建新的products表，只保留必要的字段
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS products (
             barcode VARCHAR(13) PRIMARY KEY COMMENT 'EAN-13条形码（商品唯一标识）',
             product_name VARCHAR(255) NOT NULL COMMENT '商品名称（优先存储中文）',
-            brand VARCHAR(100) DEFAULT '' COMMENT '商品品牌（可选，API返回时补充）',
-            ingredients_raw TEXT COMMENT '原始配料文本（未清洗的完整配料表）',
-            ingredients_parsed TEXT COMMENT '解析后的配料JSON字符串（结构化数据）',
+            ingredients TEXT COMMENT '商品配料信息',
             create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '商品首次入库时间',
             update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '数据最后更新时间'
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='食品商品信息表';
@@ -153,7 +159,16 @@ def query_local_product(barcode):
         product = cursor.fetchone()
         cursor.close()
         connection.close()
-        return product
+        
+        # 转换为旧格式，保持兼容性
+        if product:
+            return {
+                'barcode': product['barcode'],
+                'product_name': product['product_name'],
+                'ingredients_raw': product['ingredients'],
+                'ingredients_parsed': product['ingredients']
+            }
+        return None
     except Error as e:
         print(f"查询商品错误: {e}")
         if connection:
@@ -162,6 +177,31 @@ def query_local_product(barcode):
 
 # 保存商品到数据库
 def save_product_to_local(product):
+    # 验证商品信息是否有效
+    if not product:
+        print("保存失败：商品信息为空")
+        return False
+    
+    # 检查必要字段
+    product_name = product.get('product_name', '').strip()
+    ingredients_raw = product.get('ingredients_raw', '').strip()
+    ingredients_parsed = product.get('ingredients_parsed', '').strip()
+    
+    # 验证商品名称
+    if not product_name or product_name == '未命名商品':
+        print(f"保存失败：商品名称无效 - {product_name}")
+        return False
+    
+    # 验证配料信息 - 允许没有配料信息（API Byte不提供配料信息）
+    # if not ingredients_raw and not ingredients_parsed:
+    #     print("保存失败：缺少配料信息")
+    #     return False
+    
+    # 检查是否为OCR失败的信息
+    if 'OCR识别失败' in str(ingredients_raw) or 'OCR识别失败' in str(ingredients_parsed):
+        print("保存失败：OCR识别失败的商品不入库")
+        return False
+    
     connection = get_db_connection()
     if not connection:
         return False
@@ -170,37 +210,38 @@ def save_product_to_local(product):
         cursor = connection.cursor()
         # 检查商品是否已存在
         cursor.execute("SELECT barcode FROM products WHERE barcode = %s", (product['barcode'],))
+        
+        # 准备配料信息
+        ingredients_raw = product.get('ingredients_raw', '').strip()
+        ingredients_parsed = product.get('ingredients_parsed', '').strip()
+        ingredients = ingredients_raw if ingredients_raw else ingredients_parsed
+        
         if cursor.fetchone():
             # 更新现有商品
             cursor.execute("""
             UPDATE products SET 
                 product_name = %s, 
-                brand = %s, 
-                ingredients_raw = %s, 
-                ingredients_parsed = %s 
+                ingredients = %s 
             WHERE barcode = %s
             """, (
                 product.get('product_name', ''),
-                product.get('brand', ''),
-                product.get('ingredients_raw', ''),
-                product.get('ingredients_parsed', ''),
+                ingredients,
                 product['barcode']
             ))
         else:
             # 插入新商品
             cursor.execute("""
-            INSERT INTO products (barcode, product_name, brand, ingredients_raw, ingredients_parsed) 
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO products (barcode, product_name, ingredients) 
+            VALUES (%s, %s, %s)
             """, (
                 product['barcode'],
                 product.get('product_name', ''),
-                product.get('brand', ''),
-                product.get('ingredients_raw', ''),
-                product.get('ingredients_parsed', '')
+                ingredients
             ))
         connection.commit()
         cursor.close()
         connection.close()
+        print(f"保存成功：{product_name}")
         return True
     except Error as e:
         print(f"保存商品错误: {e}")
